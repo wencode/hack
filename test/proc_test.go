@@ -39,7 +39,7 @@ func TestWrite(t *testing.T) {
 
 	str := []byte("hello,world\n")
 	l := proc.Call(write_addr, 1, uintptr(unsafe.Pointer(&(str[0]))), uintptr(len(str)))
-	if l != len(str) {
+	if int(l) != len(str) {
 		t.Errorf("call write failed")
 	}
 }

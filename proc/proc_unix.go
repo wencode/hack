@@ -6,12 +6,12 @@ import (
 	"unsafe"
 )
 
-func Call(fn uintptr, args ...uintptr) int {
+func Call(fn uintptr, args ...uintptr) uintptr {
 	ta := new(tramargs)
 	ta.fn = fn
 	copy(ta.arg[:], args)
 	call(ta)
-	return int(ta.ret)
+	return ta.ret
 }
 
 func call(a *tramargs) int32 {
