@@ -5,7 +5,7 @@ package dl
 // #include <dlfcn.h>
 // #include <stdlib.h>
 // #include <string.h>
-// #cgo LDFLAGS: -ldl
+// #cgo LDFLAGS: -ldl -pthread
 import "C"
 import (
 	"unsafe"
@@ -15,8 +15,8 @@ func Open(filename string) (lib Lib, err error) {
 	s := C.CString(filename)
 	defer C.free(unsafe.Pointer(s))
 
-	handle, e := C.dlopen(s, C.int(0))
-	if e != nil {
+	handle, e := C.dlopen(s, C.RTLD_NOW)
+	if handle == nil {
 		err = newDLError(filename, e)
 		return
 	}
