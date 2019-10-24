@@ -1,28 +1,31 @@
 package dl
 
+import (
+	"syscall"
+)
+
 // Implemented in runtime/syscall_windows.goc; we provide jumps to them in our assembly file.
 func loadlibrary(filename *uint16) (handle uintptr, err syscall.Errno)
 func getprocaddress(handle uintptr, procname *uint8) (proc uintptr, err syscall.Errno)
-
 
 func Open(filename string) (lib Lib, err error) {
 	utf16filename, e := syscall.UTF16PtrFromString(filename)
 	if e != nil {
 		err = &DLError{
-			Filename:filename,
-			Errstr:"convert to utf16 failed: " + e.Error(),
+			filename: filename,
+			errstr:   "convert to utf16 failed: " + e.Error(),
 		}
 		return
 	}
 	handle, e := loadlibrary(utf16filename)
-	if e != nil {
+	if handle == 0 {
 		err = &DLError{
-			Filename:filename,
-			Errstr:"load " + filename + "filed: " + e.Error(),
+			filename: filename,
+			errstr:   "load " + filename + "filed: " + e.Error(),
 		}
 		return
 	}
-	return Lib(handle)
+	return Lib(handle), nil
 
 }
 
@@ -34,17 +37,13 @@ func (lib Lib) Close() {
 }
 
 func (lib Lib) Sym(symbol string) uintptr {
-	utf8symbol, err := uint8ptr(symbol)
-	if err != nil {
-		return 0
-	}
+	utf8symbol := uint8ptr(symbol)
 	p, e := getprocaddress(uintptr(lib), utf8symbol)
 	if e != 0 {
 		return 0
 	}
 	return p
 }
-
 
 func uint8ptr(s string) *uint8 {
 	b := make([]byte, len(s)+1)
@@ -53,7 +52,7 @@ func uint8ptr(s string) *uint8 {
 }
 
 var (
-	knlLib Lib
+	knlLib      Lib
 	closeHandle uintptr
 )
 
@@ -64,6 +63,3 @@ func init() {
 	}
 	closeHandle = knlLib.Sym("CloseHandle")
 }
-
-
-

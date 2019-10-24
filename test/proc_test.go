@@ -12,16 +12,21 @@ import (
 )
 
 var (
-	libcfile string
+	libcfile     string
+	write_symbol string
 )
 
 func init() {
 	switch runtime.GOOS {
 	case "darwin":
 		libcfile = "/usr/lib/libc.dylib"
+		write_symbol = "write"
 	case "windows":
+		libcfile = "msvcrt.dll"
+		write_symbol = "_write"
 	default:
 		libcfile = "libc.so.6"
+		write_symbol = "write"
 	}
 
 }
@@ -32,7 +37,7 @@ func TestWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lib.Close()
-	write_addr := lib.Sym("write")
+	write_addr := lib.Sym(write_symbol)
 	if write_addr == 0 {
 		t.Fatalf("can't find write symbol")
 	}
