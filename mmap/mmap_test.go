@@ -51,3 +51,20 @@ func TestRead(t *testing.T) {
 		t.Fatalf("write %d, err %v", n, err)
 	}
 }
+
+func TestResize(t *testing.T) {
+	mf, err := Open("foo.data", WithWrite(), WithTruncate(), WithLength(4096))
+	if err != nil {
+		t.Fatalf("open error %v", err)
+	}
+	defer mf.Close()
+
+	if err := mf.Resize(8192, WithLength(8192)); err != nil {
+		t.Fatalf("resize error %v", err)
+	}
+	data := []byte("hello")
+	n := copy(mf.buf[8185:], data)
+	if n != len(data) {
+		t.Errorf("write data error after resize")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"syscall"
 	"unsafe"
 )
 
@@ -76,18 +77,23 @@ func WithTruncate() Option {
 	}
 }
 
-func Open(filename string, opts ...Option) (*MapFile, error) {
-	param := Param{}
+func parseMapParam(opts ...Option) *Param {
+	param := &Param{}
 	for _, opt := range opts {
-		opt(&param)
+		opt(param)
 	}
+	return param
+}
+
+func Open(filename string, opts ...Option) (*MapFile, error) {
+	param := parseMapParam(opts...)
 
 	var (
 		file *os.File
 		err  error
 	)
 	if filename != "" {
-		file, err = openFile(filename, &param)
+		file, err = openFile(filename, param)
 		if err != nil {
 			return nil, err
 		}
@@ -214,6 +220,37 @@ func (m *MapFile) Flush(b []byte) {
 	Flush(bh.Data, uintptr(bh.Len))
 }
 
+func (m *MapFile) Resize(newSize int, opts ...Option) error {
+	param := parseMapParam(opts...)
+	if param.Len > 0 {
+		if param.Offset < 0 {
+			return ErrArgument
+		}
+		if param.Offset+param.Len > newSize || param.Offset >= newSize {
+			return ErrArgument
+		}
+	}
+	if m.file == nil {
+		return ErrArgument
+	} else {
+		st, err := m.file.Stat()
+		if err != nil {
+			return err
+		}
+		if int64(newSize) <= st.Size() {
+			return ErrArgument
+		}
+	}
+
+	fillFile(m.file, newSize)
+	if param.Len > 0 {
+		if err := m.Remap(param.Offset, param.Len); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func openFile(filename string, param *Param) (*os.File, error) {
 	flags := os.O_RDONLY
 	if param.Prot != RDONLY {
@@ -223,6 +260,8 @@ func openFile(filename string, param *Param) (*os.File, error) {
 	if param.Truncate {
 		flags |= os.O_TRUNC
 	}
+	mask := syscall.Umask(0)
+	defer syscall.Umask(mask)
 	file, err := os.OpenFile(filename, flags, 0644)
 	if err != nil {
 		return nil, err
