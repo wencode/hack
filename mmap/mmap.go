@@ -93,7 +93,7 @@ func Open(filename string, opts ...Option) (*MapFile, error) {
 		err  error
 	)
 	if filename != "" {
-		file, err = openFile(filename, param)
+		file, err = OpenFile(filename, param.Prot, param.Truncate)
 		if err != nil {
 			return nil, err
 		}
@@ -103,14 +103,24 @@ func Open(filename string, opts ...Option) (*MapFile, error) {
 		return nil, ErrArgument
 	}
 
-	var (
-		fd  = -1
-		buf MapBuf
-	)
+	return _open(file, param)
+}
+
+func OpenWithFile(file *os.File, opts ...Option) (*MapFile, error) {
+	param := parseMapParam(opts...)
+	return _open(file, param)
+}
+
+func _open(file *os.File, param *Param) (*MapFile, error) {
+	if err := checkFile(file, param); err != nil {
+		return nil, err
+	}
+
+	var fd = -1
 	if file != nil {
 		fd = int(file.Fd())
 	}
-	buf, err = Mmap(fd, param.Prot, param.Offset, param.Len)
+	buf, err := Mmap(fd, param.Prot, param.Offset, param.Len)
 	if err != nil {
 		return nil, err
 	}
@@ -251,13 +261,13 @@ func (m *MapFile) Resize(newSize int, opts ...Option) error {
 	return nil
 }
 
-func openFile(filename string, param *Param) (*os.File, error) {
+func OpenFile(filename string, prot int, truncate bool) (*os.File, error) {
 	flags := os.O_RDONLY
-	if param.Prot != RDONLY {
+	if prot != RDONLY {
 		flags = os.O_RDWR
 	}
 	flags |= os.O_CREATE
-	if param.Truncate {
+	if truncate {
 		flags |= os.O_TRUNC
 	}
 	mask := syscall.Umask(0)
@@ -267,9 +277,13 @@ func openFile(filename string, param *Param) (*os.File, error) {
 		return nil, err
 	}
 
+	return file, nil
+}
+
+func checkFile(file *os.File, param *Param) error {
 	st, err := file.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	filesize := int(st.Size())
@@ -291,7 +305,7 @@ func openFile(filename string, param *Param) (*os.File, error) {
 		fillFile(file, param.Len)
 	}
 
-	return file, nil
+	return nil
 }
 
 func fillFile(file *os.File, length int) {
