@@ -26,8 +26,9 @@ type MapFile struct {
 	file   *os.File
 	prot   int
 	offset int
-	buf    MapBuf
+	master MapBuf
 	index  int
+	extras []MapBuf
 }
 
 type Param struct {
@@ -82,6 +83,9 @@ func parseMapParam(opts ...Option) *Param {
 	for _, opt := range opts {
 		opt(param)
 	}
+	if param.Len == 0 {
+		param.Len = os.Getpagesize()
+	}
 	return param
 }
 
@@ -129,12 +133,16 @@ func _open(file *os.File, param *Param) (*MapFile, error) {
 		file:   file,
 		prot:   param.Prot,
 		offset: param.Offset,
-		buf:    buf,
+		master: buf,
 	}, nil
 }
 
 func (m *MapFile) Close() {
 	m.Unmap()
+	for _, buf := range m.extras {
+		buf.Unmap()
+	}
+	m.extras = nil
 	if m.file != nil {
 		m.file.Close()
 		m.file = nil
@@ -142,9 +150,9 @@ func (m *MapFile) Close() {
 }
 
 func (m *MapFile) Unmap() {
-	if m.buf != nil {
-		m.buf.Unmap()
-		m.buf = nil
+	if m.master != nil {
+		m.master.Unmap()
+		m.master = nil
 	}
 }
 
@@ -154,32 +162,32 @@ func (m *MapFile) Remap(offset, len int) error {
 	if err != nil {
 		return err
 	}
-	m.buf = buf
+	m.master = buf
 	m.index = 0
 	return nil
 }
 
 func (m *MapFile) Buffer() MapBuf {
-	return m.buf
+	return m.master
 }
 
 func (m *MapFile) Read(b []byte) (n int, err error) {
-	if m.buf == nil || m.index >= len(m.buf) {
+	if m.master == nil || m.index >= len(m.master) {
 		err = io.EOF
 		return
 	}
-	src := m.buf[m.index:]
+	src := m.master[m.index:]
 	n = copy(b, src)
 	m.index += n
 	return
 }
 
 func (m *MapFile) Write(b []byte) (n int, err error) {
-	if m.buf == nil || m.index >= len(m.buf) {
+	if m.master == nil || m.index >= len(m.master) {
 		err = io.EOF
 		return
 	}
-	dst := m.buf[m.index:]
+	dst := m.master[m.index:]
 	n = copy(dst, b)
 	m.index += n
 	return
@@ -188,24 +196,24 @@ func (m *MapFile) Write(b []byte) (n int, err error) {
 func (m *MapFile) Seek(offset int64, whence int) (newoff int64, err error) {
 	switch whence {
 	case io.SeekStart:
-		if offset < 0 || offset > int64(len(m.buf)) {
+		if offset < 0 || offset > int64(len(m.master)) {
 			err = ErrArgument
 			return
 		}
 		m.index = int(offset)
 	case io.SeekCurrent:
 		cur := m.index + int(offset)
-		if cur < 0 || cur > len(m.buf) {
+		if cur < 0 || cur > len(m.master) {
 			err = ErrArgument
 			return
 		}
 		m.index = cur
 	case io.SeekEnd:
-		if offset < 0 || offset > int64(len(m.buf)) {
+		if offset < 0 || offset > int64(len(m.master)) {
 			err = ErrArgument
 			return
 		}
-		m.index = len(m.buf) - 1 - int(offset)
+		m.index = len(m.master) - 1 - int(offset)
 	default:
 		err = ErrArgument
 		return
@@ -215,15 +223,15 @@ func (m *MapFile) Seek(offset int64, whence int) (newoff int64, err error) {
 }
 
 func (m *MapFile) Sync() {
-	if m.buf == nil {
+	if m.master == nil {
 		return
 	}
-	m.buf.Sync()
+	m.master.Sync()
 }
 
 func (m *MapFile) Flush(b []byte) {
 	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	baseh := m.buf.header()
+	baseh := m.master.header()
 	if bh.Data < baseh.Data || bh.Data >= baseh.Data+uintptr(baseh.Len) {
 		return
 	}
@@ -240,6 +248,39 @@ func (m *MapFile) Resize(newSize int, opts ...Option) error {
 			return ErrArgument
 		}
 	}
+
+	if err := m.extendFile(newSize); err != nil {
+		return err
+	}
+
+	if param.Len > 0 {
+		if err := m.Remap(param.Offset, param.Len); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MapFile) ExtendMap(size int) (MapBuf, error) {
+	if m.file == nil {
+		return nil, ErrArgument
+	}
+
+	st, err := m.file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	oldFileSize := int(st.Size())
+	fillFile(m.file, oldFileSize+size)
+	buf, err := Mmap(int(m.file.Fd()), m.prot, oldFileSize, size)
+	if err != nil {
+		return nil, err
+	}
+	m.extras = append(m.extras, buf)
+	return buf, err
+}
+
+func (m *MapFile) extendFile(newSize int) error {
 	if m.file == nil {
 		return ErrArgument
 	} else {
@@ -253,11 +294,6 @@ func (m *MapFile) Resize(newSize int, opts ...Option) error {
 	}
 
 	fillFile(m.file, newSize)
-	if param.Len > 0 {
-		if err := m.Remap(param.Offset, param.Len); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
