@@ -261,7 +261,7 @@ func (m *MapFile) Resize(newSize int, opts ...Option) error {
 	return nil
 }
 
-func (m *MapFile) ExtendMap(size int) (MapBuf, error) {
+func (m *MapFile) ExtendMap(offset int, size int) (MapBuf, error) {
 	if m.file == nil {
 		return nil, ErrArgument
 	}
@@ -272,7 +272,7 @@ func (m *MapFile) ExtendMap(size int) (MapBuf, error) {
 	}
 	oldFileSize := int(st.Size())
 	fillFile(m.file, oldFileSize+size)
-	buf, err := Mmap(int(m.file.Fd()), m.prot, oldFileSize, size)
+	buf, err := Mmap(int(m.file.Fd()), m.prot, offset, size)
 	if err != nil {
 		return nil, err
 	}

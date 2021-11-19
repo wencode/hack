@@ -76,7 +76,7 @@ func TestExtend(t *testing.T) {
 	}
 	defer mf.Close()
 
-	buf, err := mf.ExtendMap(4096)
+	buf, err := mf.ExtendMap(4096, 4096)
 	if err != nil {
 		t.Fatalf("extend error %v", err)
 	}
