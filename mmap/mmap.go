@@ -271,7 +271,9 @@ func (m *MapFile) ExtendMap(offset int, size int) (MapBuf, error) {
 		return nil, err
 	}
 	oldFileSize := int(st.Size())
-	fillFile(m.file, oldFileSize+size)
+	if newSize := offset + size; newSize > oldFileSize {
+		fillFile(m.file, newSize)
+	}
 	buf, err := Mmap(int(m.file.Fd()), m.prot, offset, size)
 	if err != nil {
 		return nil, err
@@ -350,7 +352,7 @@ func fillFile(file *os.File, length int) {
 	)
 	file.Seek(int64(length-1), 0)
 	file.Write(tmp[:])
-	file.Sync()
+	//file.Sync()
 	file.Seek(0, 0)
 }
 
