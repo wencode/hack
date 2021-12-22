@@ -3,7 +3,13 @@
 package mmap
 
 import (
+	"os"
 	"syscall"
+)
+
+var (
+	pageSize     uintptr = uintptr(os.Getpagesize())
+	pageSizeMask uintptr = ^(pageSize - 1)
 )
 
 func Flush(addr, length uintptr) uintptr {

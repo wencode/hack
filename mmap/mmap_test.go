@@ -1,6 +1,7 @@
 package mmap
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -85,4 +86,44 @@ func TestExtend(t *testing.T) {
 	if n != len(data) {
 		t.Errorf("write data error after extend")
 	}
+}
+
+func BenchmarkCopyBuffer(b *testing.B) {
+	for i := 0; i < 1000; i++ {
+		fmt.Fprintf(os.Stderr, "benchmark %d-%d\n", b.N, i)
+		doCopyBuffer(b)
+	}
+}
+
+func doCopyBuffer(b *testing.B) {
+	filename := fmt.Sprintf("mem_%d.data", b.N)
+	siz := roundTo4096(b.N)
+	if siz > 1024*1024*512 {
+		siz = 1024 * 1024 * 512
+	}
+	mf, err := Open(
+		filename,
+		WithWrite(),
+		WithLength(siz),
+	)
+	if err != nil {
+		b.Fatalf("open %s error:%v", filename, err)
+	}
+	defer mf.Close()
+
+	b.StartTimer()
+
+	buf := mf.Buffer()
+	if buf == nil {
+		b.Fatalf("get %s buffer failed", filename)
+	}
+
+	pos := len(buf) / 2
+	copy(buf[:pos], buf[pos:])
+
+	b.StopTimer()
+}
+
+func roundTo4096(n int) int {
+	return (n + 4095) & ^4095
 }
